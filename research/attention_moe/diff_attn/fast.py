@@ -146,11 +146,17 @@ class MultiheadFlashDiff1(LoggingLayer):
         # TODO reduced outlier magnitude -> low-bit kernels?
         # TODO sparse attention -> kv-cache compression?
 
+
+
+        # TODO fix params swiglu!!!!!!!!!!!!!!!!!
+
+
+
         # TODO scaling/B to 0's in LoRA?
         # TODO Q LoRA + K identity?
+        # TODO niedzielona lambda?
 
         # TODO softmax na końcu??
-        # TODO niedzielona lambda?
         # TODO flash attn z ich papera (ale lepsze, bo na 3?)?
 
         # TODO inżynierka configów pairwise
@@ -279,7 +285,7 @@ class MultiheadFlashDiff1(LoggingLayer):
         else:
             raise NotImplementedError
 
-        self.scaling = self.dhead ** -0.5
+        self.scaling = (self.dhead if adapter_type != "none" else self.dhead // 2) ** -0.5
 
         self.q_proj = Linear(
             self.dmodel,
@@ -321,7 +327,7 @@ class MultiheadFlashDiff1(LoggingLayer):
         if self.use_rope:
             self.rotary_emb = RotaryEmbedding(
                 self.dhead if self.adapter_type != "none" else self.dhead // 2,
-                base=500000.0,
+                base=10000.0,
                 interleaved=True,
             )
             self.rotary_emb._update_cos_sin_cache(self.seq_len, dtype=torch.float32)
