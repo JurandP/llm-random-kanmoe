@@ -80,6 +80,23 @@ def introduce_parser_arguments(
         required=True,
     )
     parser.add_argument("--init_scale", type=float, required=True)
+    parser.add_argument("--init_scale_base", type=float, default=0.1, required=False)
+    parser.add_argument("--init_scale_spline", type=float, default=0.1, required=False)
+    parser.add_argument("--init_scale_noise", type=float, default=0.1, required=False)
+    parser.add_argument(
+        "--kan_latent_factor",
+        type=float,
+        default=1.0,
+        required=False,
+        help="in kan_latent specity how many times kan should increase dimensionality",
+    )
+    parser.add_argument(
+        "--kan_parameter_matched",
+        type=str,
+        default="true",
+        required=False,
+        help="true if you want kan to be parameter matched to mlp architecture",
+    )
 
     # other training hyperparameters
 

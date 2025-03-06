@@ -2,10 +2,76 @@ from typing import Optional
 
 import torch
 from fancy_einsum import einsum
+from typing import Literal
+
 
 from lizrd.core.initialization import get_init_fun
 from lizrd.core.misc import resolve_activation_name
 from lizrd.core.misc import LoggingLayer, time_measured
+from lizrd.core.kan import KanFF
+
+
+class ExpertKAN(LoggingLayer):
+    def __init__(
+        self,
+        kan_type: str,
+        dmodel: int,
+        n_experts: int,
+        expert_size: int,
+        use_topk_initialization,
+        init_type: Literal["kaiming_uniform", "truncated_normal"] = "kaiming_uniform",
+        init_scale: float = 0.1,
+        init_scale_base: float = 1.0,
+        init_scale_spline: float = 1.0,
+        init_scale_noise: float = 0.1,
+        latent_factor: float = 1.0,
+        parameter_matched: str = "true",
+        activation_name: str = "relu",
+        topk: int = 1,
+    ):
+        super().__init__()
+        self.dmodel = dmodel
+        self.n_experts = n_experts
+        self.expert_size = expert_size
+        self.activation = resolve_activation_name(activation_name)
+        self.doutput = dmodel
+
+        print(f"\nexpert_size = dff = {expert_size}\n")
+
+        self.kan_experts = torch.nn.ModuleList(
+            [
+                KanFF(
+                    dmodel=dmodel,
+                    dff=expert_size,
+                    kan_type=kan_type,
+                    init_type=init_type,
+                    init_scale=init_scale,
+                    init_scale_base=init_scale_base,
+                    init_scale_spline=init_scale_spline,
+                    init_scale_noise=init_scale_noise,
+                    latent_factor=latent_factor,
+                    parameter_matched=parameter_matched,
+                )
+                for _ in range(n_experts)
+            ]
+        )
+
+    @time_measured("process_by_experts")
+    def forward(self, x: torch.Tensor):
+        n_experts, capacity, dmodel = x.shape
+
+        assert n_experts == self.n_experts
+        assert dmodel == self.dmodel
+
+        results = []
+        for i in range(n_experts):
+            results.append(self.kan_experts[i](x[i, :, :]))
+
+        output = torch.stack(results, dim=0)
+
+        assert output.shape == x.shape
+
+        return output
 
 
 class ExpertFF(LoggingLayer):

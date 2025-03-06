@@ -12,6 +12,7 @@ from torch.profiler import ProfilerAction
 import numpy as np
 
 from lizrd.core import llm
+from lizrd.core import kan
 from lizrd.text.data import LLMBatch
 from lizrd.core.llm import Parallel
 from research.conditional.moe_layers.cont_moe_designs.common_weighted_parameter_matrices import (
@@ -76,6 +77,7 @@ from research.conditional.moe_layers.token_choice import (
 from research.conditional.moe_layers.expert_types import (
     ExpertFF,
     ExpertGated,
+    ExpertKAN,
     ExpertLinear,
 )
 from research.mamba.moe_in_mamba import MambaInProj
@@ -502,7 +504,11 @@ def retrieve_additional_losses(model: torch.nn.Module):
     if "z_losses" in model.forward_pass_cache:
         z_losses = model.forward_pass_cache.get("z_losses", [])
         z_losses = torch.stack(z_losses)
+<<<<<<< HEAD
         z_loss = torch.sum(z_losses)
+=======
+        z_loss = torch.mean(z_losses)
+>>>>>>> kanmoe
         losses["z_loss"] = z_loss
 
     return losses
@@ -541,13 +547,36 @@ def get_ff_layer(args):
         return_fn = lambda: llm.FeedForward(
             args.dmodel, args.dff, init_type=args.init_type, init_scale=args.init_scale
         )
+    elif args.ff_mode == "identity":
+        return_fn = lambda: kan.Identity()
+    elif args.ff_mode in ["kan_squared", "kan", "mlp_kan", "kan_latent"]:
+        latent_factor = None
+        if args.kan_latent_factor is not None:
+            latent_factor = args.kan_latent_factor
+        return_fn = lambda: kan.KanFF(
+            args.dmodel,
+            args.dff,
+            args.ff_mode,
+            init_type=args.init_type,
+            init_scale=args.init_scale,
+            init_scale_base=args.init_scale_base,
+            init_scale_spline=args.init_scale_spline,
+            init_scale_noise=args.init_scale_noise,
+            latent_factor=latent_factor,
+            parameter_matched=args.kan_parameter_matched,
+        )
     elif args.ff_mode == "swi_glu":
         return_fn = lambda: llm.SwiGLUFeedForward(
             args.dmodel, args.dff, init_type=args.init_type, init_scale=args.init_scale
         )
     elif args.ff_mode == "vanilla_timed":
         return_fn = lambda: FeedForwardTimed(
-            args.dmodel, args.dff, args.activation_type, args.no_ff
+            args.dmodel,
+            args.dff,
+            args.activation_type,
+            args.no_ff,
+            init_type=args.init_type,
+            init_scale=args.init_scale,
         )
     elif args.ff_mode == "cont_moe" or args.ff_mode == "cont_moe_quick":
         return_fn = lambda: ContinuousMoE(**get_common_mot_kwargs(args))
@@ -741,6 +770,17 @@ def get_inner_expert(args):
         expert_inner_class = partial(ExpertGated, activation_name="silu")
     elif args.moe_inner_expert == "geglu":
         expert_inner_class = partial(ExpertGated, activation_name="gelu")
+    elif args.moe_inner_expert in ["kan_squared", "kan", "mlp_kan", "kan_latent"]:
+        expert_inner_class = partial(
+            ExpertKAN,
+            kan_type=args.moe_inner_expert,
+            activation_name="relu",
+            init_scale_base=args.init_scale_base,
+            init_scale_spline=args.init_scale_spline,
+            init_scale_noise=args.init_scale_noise,
+            latent_factor=args.kan_latent_factor,
+            parameter_matched=args.kan_parameter_matched,
+        )
     else:
         raise NotImplementedError(
             f'Inner expert type "{args.moe_inner_expert}" not implemented'
